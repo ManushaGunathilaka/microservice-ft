@@ -10,7 +10,12 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @NoArgsConstructor
 public class OrderRequest {
+    private String orderNumber;
     private String skuCode;
     private BigDecimal price;
     private Integer quantity;
+    private UserDetails userDetails;
+
+    public record UserDetails(String email, String firstName, String lastName) {}
+
 }

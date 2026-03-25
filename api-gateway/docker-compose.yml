@@ -23,7 +23,7 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
     ports:
-      - "8085:8080"
+      - "8086:8080"
     volumes:
       - ./docker/keycloak/realms/:/opt/keycloak/data/import/
     depends_on:
