@@ -81,7 +81,49 @@
 			<version>3.0.0</version>
 		</dependency>
 
+		<!-- Observability -->
 
+		<!--1.  loki for logging -->
+		<dependency>
+			<groupId>com.github.loki4j</groupId>
+			<artifactId>loki-logback-appender</artifactId>
+			<version>1.3.2</version>
+		</dependency>
+
+<!--		User request → Spring Boot app-->
+<!--		→ Micrometer records (e.g., response time)-->
+<!--		→ Actuator exposes it (/metrics)-->
+<!--		→ Grafana/Prometheus reads it-->
+
+		<!--2.1  micrometer for metrics -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<!--2.2  micrometer registry for prometheus -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!--3.  micrometer tracing with brave and zipkin -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing-bridge-brave</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.zipkin.reporter2</groupId>
+			<artifactId>zipkin-reporter-brave</artifactId>
+		</dependency>
+
+		<!--4.  spring-boot-starter-aop for @Timed and @Counted annotations -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aop</artifactId>
+			<version>3.2.5</version>
+		</dependency>
 	</dependencies>
 
 	<build>
