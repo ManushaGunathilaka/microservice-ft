@@ -1,0 +1,367 @@
+version: '3.9'
+
+services:
+  # ============================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================
+
+  # === Databases ===
+  mysql-order:
+    image: mysql:8.0
+    container_name: mysql-order
+    environment:
+      MYSQL_ROOT_PASSWORD: "1234"
+      MYSQL_DATABASE: manu-orderdb-ms
+      MYSQL_USER: manu
+      MYSQL_PASSWORD: "1234"
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-order-data:/var/lib/mysql
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-inventory:
+    image: mysql:8.0
+    container_name: mysql-inventory
+    environment:
+      MYSQL_ROOT_PASSWORD: "1234"
+      MYSQL_DATABASE: manu-inventoryrdb-ms
+      MYSQL_PASSWORD: "1234"
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql-inventory-data:/var/lib/mysql
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb-product:
+    image: mongo:8.2
+    container_name: mongodb-product
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: "1234"
+      MONGO_INITDB_DATABASE: product-service
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-product-data:/data/db
+    networks:
+      - microservices-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak-mysql:
+    image: mysql:8.0
+    container_name: keycloak-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: keycloak
+      MYSQL_USER: keycloak
+      MYSQL_PASSWORD: password
+    volumes:
+      - keycloak-mysql-data:/var/lib/mysql
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # === Message Broker ===
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - microservices-network
+
+  kafka-broker:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-broker
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    depends_on:
+      zookeeper:
+        condition: service_started
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - microservices-network
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.5.0
+    hostname: schema-registry
+    container_name: schema-registry
+    depends_on:
+      - kafka-broker
+    ports:
+      - "8085:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka-broker:29092'
+    networks:
+      - microservices-network
+
+  # === Authentication ===
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.1
+    container_name: keycloak
+    command: [ "start-dev", "--import-realm" ]
+    environment:
+      KC_DB: mysql
+      KC_DB_URL_HOST: keycloak-mysql
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8086:8080"
+    volumes:
+      - ./api-gateway/docker/keycloak/realms/:/opt/keycloak/data/import/
+    depends_on:
+      keycloak-mysql:
+        condition: service_healthy
+    networks:
+      - microservices-network
+
+  # === Observability Stack ===
+  prometheus:
+    image: prom/prometheus:v2.46.0
+    container_name: prometheus
+    command:
+      - --enable-feature=exemplar-storage
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./api-gateway/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - microservices-network
+
+  loki:
+    image: grafana/loki:main
+    container_name: loki
+    command: [ '-config.file=/etc/loki/local-config.yaml' ]
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    networks:
+      - microservices-network
+
+  tempo:
+    image: grafana/tempo:2.2.2
+    container_name: tempo
+    command: [ '-config.file=/etc/tempo.yaml' ]
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./api-gateway/docker/tempo/tempo.yml:/etc/tempo.yaml
+      - tempo-data:/var/tempo
+    networks:
+      - microservices-network
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: 'grafana-piechart-panel'
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    networks:
+      - microservices-network
+
+  # ============================================
+  # MICROSERVICES (Built with Cloud Native BuildPacks)
+  # ============================================
+
+  api-gateway:
+    image: api-gateway:0.0.1-SNAPSHOT
+    container_name: api-gateway
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "9000:9000"
+    environment:
+      SERVER_PORT: 9000
+      SPRING_APPLICATION_NAME: api-gateway
+      KEYCLOAK_URL: http://keycloak:8080
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+    depends_on:
+      keycloak:
+        condition: service_started
+      prometheus:
+        condition: service_started
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  product-service:
+    image: product-service:0.0.1-SNAPSHOT
+    container_name: product-service
+    build:
+      context: ./product
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_PORT: 8080
+      SPRING_APPLICATION_NAME: product-service
+      SPRING_DATA_MONGODB_URI: mongodb://root:1234@mongodb-product:27017/product-service?authSource=admin
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+    depends_on:
+      mongodb-product:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  order-service:
+    image: order-service:0.0.1-SNAPSHOT
+    container_name: order-service
+    build:
+      context: ./order
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      SERVER_PORT: 8081
+      SPRING_APPLICATION_NAME: order-service
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-order:3306/manu-orderdb-ms
+      SPRING_DATASOURCE_USERNAME: manu
+      SPRING_DATASOURCE_PASSWORD: "1234"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-broker:29092
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+    depends_on:
+      mysql-order:
+        condition: service_healthy
+      kafka-broker:
+        condition: service_started
+      prometheus:
+        condition: service_started
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8081/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  inventory-service:
+    image: inventory-service:0.0.1-SNAPSHOT
+    container_name: inventory-service
+    build:
+      context: ./Inventory
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      SERVER_PORT: 8082
+      SPRING_APPLICATION_NAME: inventory-service
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-inventory:3306/manu-inventoryrdb-ms
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: "1234"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+    depends_on:
+      mysql-inventory:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8082/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  notification-service:
+    image: notification-service:0.0.1-SNAPSHOT
+    container_name: notification-service
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      SERVER_PORT: 8083
+      SPRING_APPLICATION_NAME: notification-service
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-broker:29092
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+    depends_on:
+      kafka-broker:
+        condition: service_started
+      prometheus:
+        condition: service_started
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8083/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  microservices-network:
+    driver: bridge
+
+volumes:
+  mysql-order-data:
+  mysql-inventory-data:
+  mongodb-product-data:
+  keycloak-mysql-data:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  grafana-data:
