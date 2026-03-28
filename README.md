@@ -1,6 +1,5 @@
 # SpringBoot Microservice FT 🚀
 
-![Build Status](https://img.shields.io/github/actions/workflow/status/ManushaGunathilaka/springboot-microservice-ft/ci.yml?branch=main)
 ![Java](https://img.shields.io/badge/Java-21-brightgreen)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.4-6DB33F)
 ![Docker Compose](https://img.shields.io/badge/Docker%20Compose-Available-blue)
@@ -14,7 +13,7 @@
 
 **Short description**
 - A compact Spring Boot microservices sample demonstrating API Gateway, Product, Order, Inventory and Notification services.
-- Implements Resilience (Resilience4j), Observability (Micrometer, Zipkin), async order placement, Kafka (Avro) events and simple email notifications.
+- Implements Resilience (Resilience4j), Observability (Micrometer, Zipkin,Grafana Stack,Prometheus), async order placement, Kafka (Avro) events and simple email notifications.
 
 **Repository**: https://github.com/ManushaGunathilaka/springboot-microservice-ft
 
@@ -30,7 +29,7 @@
 
 **About**
 - This repository contains a sample Spring Boot microservice suite composed of:
-  - an `api-gateway` (Spring Cloud Gateway + OAuth2 resource server + Resilience4j),
+  - an `api-gateway` (Spring Cloud Gateway + OAuth2 resource server (Keycloak) + Resilience4j),
   - a `product` service (MongoDB-backed product CRUD),
   - an `order` service (MySQL-backed, Feign client to inventory, publishes Avro/Kafka events),
   - a `Inventory` service (MySQL-backed inventory check endpoint), and
@@ -38,14 +37,16 @@
 
 **Architecture**
 
+![Architecture Diagram](./assets/ms-architecture-diagram.gif)
+
 Simple ASCII overview (service ports configured in each service application.properties):
 
 api-gateway (9000)
-  └─► Routes to services
-      ├─► product-service (8080)  — MongoDB
-      ├─► order-service (8081)    — MySQL, Feign -> inventory
-      ├─► inventory-service (8082)— MySQL
-      └─► notification-service (8083) — Kafka consumer / Mail
+└─► Routes to services
+├─► product-service (8080)  — MongoDB
+├─► order-service (8081)    — MySQL, Feign -> inventory
+├─► inventory-service (8082)— MySQL
+└─► notification-service (8083) — Kafka consumer / Mail
 
 Event flow:
 - order-service publishes `order-placed` (Kafka, Avro) -> notification-service consumes -> sends email
@@ -162,4 +163,5 @@ If you'd like, I can:
 - add a LICENSE file (MIT/Apache) and a short CONTRIBUTING.md.
 
 Happy to continue — tell me which next step you'd prefer! ✨
-"# microservice-ft" 
+"# microservice-ft"
+# Manusha Gunathilaka - SpringBoot Microservice FT 🚀
